@@ -5,42 +5,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 import difflib
 from flask import Flask
+from fetch_data import flatten_and_frame
 
-# loading json file (data obtained from New york times API)
-with open('response2023_08.json', 'r') as f:
-    article_data = json.load(f)
-    f.close()
-print(json.dumps(article_data, indent=4))
-
-
-# getting all the necessary information from the json data that was obtained from new york times api 
-i = 0
-j = 0
-data_rows = []
-
-while i < len(article_data['response']['docs']): # looping through the articles
-    extracted_data = {
-        "abstract": article_data["response"]["docs"][i]["abstract"],
-        "web_url": article_data["response"]["docs"][i]["web_url"],
-        "lead_paragraph": article_data["response"]["docs"][i]["lead_paragraph"],
-        "headline": article_data["response"]["docs"][i]["headline"]["main"],
-        "authors": article_data["response"]["docs"][i]["byline"]["original"],
-        "word_count": article_data["response"]["docs"][i]["word_count"]
-    }
-
-    while j < len(article_data['response']['docs'][i]['keywords']): # looping through the categories within the article
-        extracted_data[f'category{j}'] = article_data['response']['docs'][i]['keywords'][j]['value']
-        j += 1
-    j = 0
-
-    data_rows.append(extracted_data)
-    i += 1
-
-
-#print(data_rows)
-
-len(data_rows)
-article_df = pd.DataFrame(data_rows)
+article_df = flatten_and_frame()
 
 # checking for null values
 article_df.info()
