@@ -10,7 +10,7 @@ To be added
 
 
 ### File structure of this repo.
-* contains data file
+* data - contains data file
 * fetch_data.py - to get data and convert it to a dataframe
 * recommender_logic.py - logic of the recommender system
 * nytimes.ipynb - draft of project
