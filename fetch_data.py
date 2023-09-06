@@ -3,7 +3,7 @@ import json
 import pandas as pd
 
 # loading json file (data obtained from New york times API)
-with open('data/response2023_08.json', 'r') as f:
+with open('./data/response2023_08.json', 'r') as f:
     article_data = json.load(f)
     f.close()
 print(json.dumps(article_data, indent=4))

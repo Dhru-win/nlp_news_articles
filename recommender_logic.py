@@ -11,6 +11,8 @@ article_df = flatten_and_frame()
 
 # checking for null values
 article_df.info()
+
+# getting rid of the trailing categories as they are not necessary. 
 article_df = article_df.iloc[:, 0:9]
 
 # basic descriptive statistics of the numeric data
@@ -22,7 +24,7 @@ zero_words = column[column <= 0]
 article_df.drop(zero_words.index, inplace=True)
 article_df.reset_index(drop=True, inplace=True)
 
-#print(article_df)
+print(article_df.head())
 
 # merging the all three categories in one column
 article_df['combined_categories'] = article_df[article_df.columns[-3:]].apply(
