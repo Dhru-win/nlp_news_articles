@@ -1,11 +1,20 @@
 # Dependencies 
 import pandas as pd
-import json
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
-import difflib
-from flask import Flask
+
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import numpy as np
+from gensim.similarities import MatrixSimilarity
+from operator import itemgetter
+from gensim import corpora
+import spacy
+import string
+from spacy.lang.en.stop_words import STOP_WORDS
+import gensim
+import operator
+import re
 from fetch_data import flatten_and_frame
+
 
 article_df = flatten_and_frame()
 
@@ -24,63 +33,146 @@ zero_words = column[column <= 0]
 article_df.drop(zero_words.index, inplace=True)
 article_df.reset_index(drop=True, inplace=True)
 
-print(article_df.head())
-
-# merging the all three categories in one column
-article_df['combined_categories'] = article_df[article_df.columns[-3:]].apply(
-    lambda x: ','.join(x.dropna().astype(str)),
-    axis=1
-)
+print(article_df.head(5))
 
 # replacing all the null values with an empty string
 article_df.fillna('', inplace=True)
 
-# We will be computing TF-IDF vectors for each article and then compute the cosine similarity between the vectors to find the similarity between the articles
-# The first step will be to tokenize the text and remove the stop words.
-tfidf = TfidfVectorizer(stop_words='english')
+# loading spacy
+spacy_nlp = spacy.load('en_core_web_sm')
+# Punctuations to be removed from corpus
 
-# Fitting the tfidf on the lead paragraph of the articles to construct the tfidf matrix
-tfidf_matrix = tfidf.fit_transform(article_df['lead_paragraph'])
+punctuation = string.punctuation
+punctuation
+# Stop words to be removed from corpus
+stop_words = spacy.lang.en.stop_words.STOP_WORDS
+stop_words
 
-# In this matrix rows represent number of articles and columns represent the number of unique words from all lead paragraphs of articles
-print(tfidf_matrix.shape)
+def spacy_tokenizer(sentence):
+    """ 
+    This function cleans text and then tokenizes it
+    """
+    # removing single quotes 
+    sentence = re.sub("'", "", sentence)
 
-# a peak at some words in the tfidf matrix
-print(tfidf.get_feature_names_out()[5000:5050])
+    # removing string containing numeric values
+    sentence = re.sub('\w*\d\w*', '', sentence)
 
-# computing the cosine similarity matrix.
-# using the linear kernel to compute the cosine similarity, since we already have the tfidf vectors
-cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
+    # removing extra spaces
+    sentence = re.sub(' +', ' ', sentence)
 
-# each column contains cosine similarity for each articles with all other articles
-print(cosine_sim.shape)
-print(cosine_sim[0])
+    # removing unwanted lines starting with special characters
+    sentence = re.sub(r'\n: \'\'.*', '', sentence)
+    sentence = re.sub(r'\n!.*','',sentence)
+    sentence = re.sub(r'^:\'\'.*','',sentence)
 
-# creating a series of indices for the articles
-indices = pd.Series(article_df.index, index = article_df['combined_categories'])
-def get_recommendation(category, cosine_sim=cosine_sim):
+    # removing non-breaking new line characters
+    sentence = re.sub(r'\n', ' ', sentence)
 
-    # Getting close match to the search
-    close_match = difflib.get_close_matches(category, article_df['combined_categories'], n=1, cutoff=0.2)
+    # removing punctuations
+    sentence = re.sub(r'[^\w\s]', ' ', sentence)
 
-    # Getting the index of article to get the category
-    idx = indices[close_match[0]]
+    # tokenizing sentence
+    tokens = spacy_nlp(sentence)
 
-    # Getting pairwise similarity score for all the categories 
-    sim_scores = list(enumerate(cosine_sim[idx]))
+    # lower, strip and lemmatize text
+    tokens = [word.lemma_.lower().strip() if word.lemma_ != "-PRON-" else word.lower_ for word in tokens]
 
-    # Sorting the articles based on the similar articles
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    # remove stopwords, and exvlude words less than 2 characters
+    tokens = [word for word in tokens if word not in stop_words and word not in punctuation and len(word) > 2]
 
-    # Getting 10 most similar articles
-    sim_scores = sim_scores[1:11] 
-
-    # Getting the articles 
-    article_indices = [i[0] for i in sim_scores]
-
-    # Return headlines of 10 most similar articles
-    return article_df['headline'].iloc[article_indices]
+    return tokens
 
 
-print(get_recommendation('fires'))
+# applying the spacy tokenizer function on the lead paragraph
+article_df['preprocessed_lead_para'] = article_df['lead_paragraph'].map(lambda x: spacy_tokenizer(x)).copy()
+article_df[['preprocessed_lead_para', 'lead_paragraph']].head()
 
+# Assigning preprocessed data to a variable
+lead_para = article_df['preprocessed_lead_para']
+# To visualise most frequent occuring words throught the vocabulary
+
+# series = pd.Series(np.concatenate(lead_para)).value_counts()[:100]
+# print(series)
+
+# wordcloud = WordCloud(background_color='white').generate_from_frequencies(series)
+# plt.figure(figsize=(9,9), facecolor=None)
+# plt.imshow(wordcloud, interpolation='bilinear')
+# plt.axis('off')
+#plt.show()
+# Creating a term dictionary that has all the unique vocabularies(tokens) and index(ID) of each token
+
+def dictionary():
+    global dictionary
+    dictionary = corpora.Dictionary(lead_para)
+
+
+dictionary()
+
+# Printing top 50 item from the dictionary of vocabulary
+dict_tokens = [[[dictionary[key], dictionary.token2id[dictionary[key]]] for key, value in dictionary.items() if key <= 50]]
+dict_tokens
+# Representing text as bag of words
+corpus = [dictionary.doc2bow(text) for text in lead_para]
+# glimps of frequence of each word in a paragraph
+word_frequencies = [[(dictionary[id], frequency) for id, frequency in line] for line in corpus]
+print(word_frequencies)
+
+# Building model
+
+article_tfidf_model = gensim.models.TfidfModel(corpus, id2word=dictionary)
+article_lsi_model = gensim.models.LsiModel(article_tfidf_model[corpus], id2word=dictionary, num_topics=30)
+
+import pickle
+
+with open('article_tfidf_model.txt', 'wb') as f:
+    pickle.dump(article_tfidf_model, f)
+
+
+with open('article_lsi_model.txt', 'wb') as f:
+    pickle.dump(article_lsi_model, f)
+
+
+# for ease of access of model later
+gensim.corpora.MmCorpus.serialize('article_tfidf_model_mm', article_tfidf_model[corpus])
+gensim.corpora.MmCorpus.serialize('article_lsi_model_mm', article_lsi_model[article_tfidf_model[corpus]])
+
+# Loads the indexed corpus 
+article_tfidf_corpus = gensim.corpora.MmCorpus('article_tfidf_model_mm')
+article_lsi_corpus = gensim.corpora.MmCorpus('article_lsi_model_mm')
+
+print(article_tfidf_corpus)
+print(article_lsi_corpus) #fewer features since dimintionality has been reduced.
+
+def article_index():
+    global article_index
+    article_index = MatrixSimilarity(article_lsi_corpus, num_features = article_lsi_corpus.num_terms)
+
+article_index()
+
+def search_similar_articles(search_term):
+    query_bow = dictionary.doc2bow(spacy_tokenizer(search_term))
+    query_tfidf = article_tfidf_model[query_bow]
+    query_lsi = article_lsi_model[query_tfidf]
+
+    article_index.num_best = 5
+
+    article_list = article_index[query_lsi]
+    article_list.sort(key=itemgetter(1), reverse=True)
+    articles = []
+
+    for j, article in enumerate(article_list):
+        articles.append(
+            {
+                'Revelence': round((article[1]*100), 2),
+                'Headline': article_df['headline'][article[0]],
+                'Lead Paragraph': article_df['lead_paragraph'][article[0]]
+            }
+        )
+        if j == (article_index.num_best-1):
+            break
+    
+    return pd.DataFrame(articles, columns=['Revelence', 'Headline', 'Lead Paragraph'])
+
+
+print(search_similar_articles('flames'))
