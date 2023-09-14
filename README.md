@@ -7,7 +7,6 @@ To Build a recommender system that suggests articles based on user's topic of in
 ## Processes
 
 * Data collection <br>
-
 Data was collected from New york times API <br>
 All the articles posted on new york times in the Aug 2023
 
